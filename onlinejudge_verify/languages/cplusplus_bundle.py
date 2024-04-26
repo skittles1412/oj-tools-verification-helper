@@ -354,11 +354,7 @@ class Bundler:
                         # include guard の外側にコードが書かれているとまずいので検出する
                         raise BundleErrorAt(path, i + 1, "found codes out of include guard")
 
-                # #include <...>
-                matched = re.match(rb'\s*#\s*include\s*<(.*)>\s*', uncommented_line)
-                if matched:
-                    included = matched.group(1).decode()
-                    logger.debug('%s: line %s: #include <%s>', str(path), i + 1, str(included))
+                def try_system_include(included):
                     if included in self.pragma_once_system:
                         self._line(i + 2, path)
                     elif not is_toplevel:
@@ -382,12 +378,24 @@ class Bundler:
                         else:
                             self.pragma_once_system.add(included)
                             self.result_lines.append(line)
+                    elif included in [BITS_EXTCXX_H, BITS_STDTR1CXX_H]:
+                        self.pragma_once_system.add(included)
+                        self.result_lines.append(line)
+                        self.pragma_once_system.add(BITS_STDCXX_H)
                     else:
+                        return False
+
+                    return True
+
+                # #include <...>
+                matched = re.match(rb'\s*#\s*include\s*<(.*)>\s*', uncommented_line)
+                if matched:
+                    included = matched.group(1).decode()
+                    logger.debug('%s: line %s: #include <%s>', str(path), i + 1, str(included))
+                    if not try_system_include(included):
                         # possibly: bits/*, tr2/* boost/*, c-posix library, etc.
                         self.pragma_once_system.add(included)
                         self.result_lines.append(line)
-                        if included in [BITS_EXTCXX_H, BITS_STDTR1CXX_H]:
-                            self.pragma_once_system.add(BITS_STDCXX_H)
                     continue
 
                 # #include "..."
@@ -395,13 +403,13 @@ class Bundler:
                 if matched:
                     included = matched.group(1).decode()
                     logger.debug('%s: line %s: #include "%s"', str(path), i + 1, included)
+                    if try_system_include(included):
+                        continue
                     if not is_toplevel:
                         # #if の中から #include されると #pragma once 系の判断が不可能になるので諦める
                         raise BundleErrorAt(path, i + 1, "unable to process #include in #if / #ifdef / #ifndef other than include guards")
                     self.update(self._resolve(pathlib.Path(included), included_from=path))
                     self._line(i + 2, path)
-                    # TODO: #include "iostream" みたいに書いたときの挙動をはっきりさせる
-                    # TODO: #include <iostream> /* とかをやられた場合を落とす
                     continue
 
                 # otherwise
