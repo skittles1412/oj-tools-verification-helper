@@ -43,12 +43,14 @@ def get_parser() -> argparse.ArgumentParser:
     subparser.add_argument('-j', '--jobs', type=int, default=1)
     subparser.add_argument('--timeout', type=float, default=600)
     subparser.add_argument('--tle', type=float, default=60)
+    subparser.add_argument('--no-push', action='store_true')
 
     subparser = subparsers.add_parser('run')
     subparser.add_argument('path', nargs='*', type=pathlib.Path)
     subparser.add_argument('-j', '--jobs', type=int, default=1)
     subparser.add_argument('--timeout', type=float, default=600)
     subparser.add_argument('--tle', type=float, default=60)
+    subparser.add_argument('--no-push', action='store_true')
 
     subparser = subparsers.add_parser('docs')
     subparser.add_argument('-j', '--jobs', type=int, default=1)
@@ -59,12 +61,12 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def subcommand_run(paths: List[pathlib.Path], *, timeout: float = 600, tle: float = 60, jobs: int = 1) -> onlinejudge_verify.verify.VerificationSummary:
+def subcommand_run(paths: List[pathlib.Path], *, timeout: float = 600, tle: float = 60, jobs: int = 1, no_push: bool = False) -> onlinejudge_verify.verify.VerificationSummary:
     """
     :raises Exception: if test.sh fails
     """
 
-    does_push = 'GITHUB_ACTION' in os.environ and 'GITHUB_TOKEN' in os.environ and os.environ.get('GITHUB_REF', '').startswith('refs/heads/')  # NOTE: $GITHUB_REF may be refs/pull/... or refs/tags/...
+    does_push = not no_push and 'GITHUB_ACTION' in os.environ and 'GITHUB_TOKEN' in os.environ and os.environ.get('GITHUB_REF', '').startswith('refs/heads/')  # NOTE: $GITHUB_REF may be refs/pull/... or refs/tags/...
     if does_push:
         # checkout in advance to push
         branch = os.environ['GITHUB_REF'][len('refs/heads/'):]
@@ -290,7 +292,7 @@ def main(args: Optional[List[str]] = None) -> None:
     if parsed.subcommand == 'all':
         _delete_gitignore()
         generate_gitignore()
-        summary = subcommand_run(paths=[], timeout=parsed.timeout, tle=parsed.tle, jobs=parsed.jobs)
+        summary = subcommand_run(paths=[], timeout=parsed.timeout, tle=parsed.tle, jobs=parsed.jobs, no_push=parsed.no_push)
         subcommand_docs(jobs=parsed.jobs)
         summary.show()
         if not summary.succeeded():
@@ -299,7 +301,7 @@ def main(args: Optional[List[str]] = None) -> None:
     elif parsed.subcommand == 'run':
         _delete_gitignore()
         generate_gitignore()
-        summary = subcommand_run(paths=parsed.path, timeout=parsed.timeout, tle=parsed.tle, jobs=parsed.jobs)
+        summary = subcommand_run(paths=parsed.path, timeout=parsed.timeout, tle=parsed.tle, jobs=parsed.jobs, no_push=parsed.no_push)
         summary.show()
         if not summary.succeeded():
             sys.exit(1)
